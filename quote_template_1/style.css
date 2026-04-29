@@ -1,0 +1,134 @@
+/* Google Font: Inter pre moderný vzhľad */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+:root {
+    --text-dark: #1a1a1a;
+    --text-light: #666666;
+    --accent: #000000; /* Minimalistická čierna */
+    --border: #e5e5e5;
+    --bg-missing: #fffaf0;
+    --error: #e63946;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    line-height: 1.6;
+    color: var(--text-dark);
+    background-color: #ffffff;
+    margin: 0;
+    padding: 60px 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Header */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 80px;
+}
+
+h1 {
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: -0.5px;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.client-info {
+    font-size: 0.9rem;
+}
+
+.client-info span {
+    display: block;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+/* Warning */
+.warning {
+    background: #000;
+    color: #fff;
+    padding: 12px 20px;
+    font-size: 0.85rem;
+    margin-bottom: 40px;
+    font-weight: 400;
+}
+
+/* Table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 60px;
+}
+
+th {
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-light);
+    border-bottom: 2px solid var(--accent);
+    padding: 15px 10px;
+}
+
+td {
+    padding: 20px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.95rem;
+}
+
+.missing-row {
+    background-color: var(--bg-missing);
+}
+
+.missing-tag {
+    color: var(--error);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    border: 1px solid var(--error);
+    padding: 2px 6px;
+    border-radius: 2px;
+}
+
+/* Summary */
+.summary-container {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.summary-table {
+    width: 300px;
+}
+
+.summary-line {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    font-size: 0.9rem;
+}
+
+.summary-line.total {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--accent);
+    font-weight: 700;
+    font-size: 1.2rem;
+}
+
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+
+@media print {
+    body { padding: 0; }
+    .container { max-width: 100%; }
+}

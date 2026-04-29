@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <title>Cenová ponuka - {{ results.client }}</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Cenová<br>ponuka</h1>
+            <div class="client-info">
+                <span>Klient / Projekt</span>
+                <strong>{{ results.client }}</strong><br>
+                {{ results.project or 'Bez názvu projektu' }}
+            </div>
+        </header>
+
+        {% if warning %}
+        <div class="warning">
+            INFO: {{ warning }}
+        </div>
+        {% endif %}
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Popis</th>
+                    <th class="text-center">Množstvo</th>
+                    <th class="text-right">Cena</th>
+                    <th class="text-right">Spolu</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in results.billing_details.items %}
+                <tr class="{% if not item.unit_price %}missing-row{% endif %}">
+                    <td>
+                        {{ item.name }}
+                        {% if not item.unit_price %}
+                            <span class="missing-tag">Chýba cena</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">{{ item.quantity }} {{ item.type_of_unit or 'ks' }}</td>
+                    <td class="text-right">
+                        {% if item.unit_price %}
+                            {{ "%.2f"|format(item.unit_price) }} €
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td class="text-right">
+                        <strong>{{ "%.2f"|format(item.price_with_vat) }} €</strong>
+                        <div style="font-size: 0.7rem; color: #999;">DPH {{ item.vat_percentage }}%</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="summary-container">
+            <div class="summary-table">
+                <div class="summary-line">
+                    <span>Základ (Netto)</span>
+                    <span>{{ "%.2f"|format(results.summary.total_net) }} €</span>
+                </div>
+                <div class="summary-line">
+                    <span>DPH</span>
+                    <span>{{ "%.2f"|format(results.summary.total_vat) }} €</span>
+                </div>
+                <div class="summary-line total">
+                    <span>Celkom</span>
+                    <span>{{ "%.2f"|format(results.summary.total_brutto) }} €</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

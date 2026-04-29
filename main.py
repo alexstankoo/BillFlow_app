@@ -1,107 +1,129 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from fastapi.responses import FileResponse
-from fpdf import FPDF
-from typing import List
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field, computed_field
+from typing import List, Optional
+import google.generativeai as genai
+import json
+import os
+from jinja2 import Environment, FileSystemLoader
 
-app = FastAPI()
+genai.configure(api_key = "")
+model = genai.GenerativeModel('gemini-2.5-flash')
 
-# --- PYDANTIC MODELS (SECURITY GUARDS) ---
+app = FastAPI(title = "BillFlow AI")
 
-# 1. Create a new model for a SINGLE item on the quote
-class LineItem(BaseModel):
-    description: str
-    quantity: int
-    unit_price: float
+#pydantic models for the quote
+class Item(BaseModel):
+    name: str = Field(..., description = "First Service Name")
+    quantity: int = Field(default=1, description="Number of Pieces")
+    unit_price: Optional[float] = Field(default=None, description = "Price per unit in EUR")
+    type_of_unit: Optional[str] = Field(default=None, description = "Name of the unit")
+    vat_percentage: float = Field(default = 20.0, description = "vat percentage")
 
-# 2. Update the main request to hold a LIST of those items
-class QuoteRequest(BaseModel):
-    customer_name: str
-    currency: str = "EUR" # Setting a default value
-    items: List[LineItem] # This tells FastAPI to expect an array of items
+    @computed_field
+    def total_item_price(self) -> float:
+        if self.unit_price is not None:
+            return self.quantity * self.unit_price
+        return 0.0
+    
+    @computed_field
+    def vat_amount(self) -> float:
+        return self.total_item_price * (self.vat_percentage / 100)
 
+    @computed_field
+    def price_with_vat(self) -> float:
+        return self.total_item_price + self.vat_amount
 
-# --- PDF GENERATION ENGINE ---
+class QuoteData(BaseModel):
+    client_name: str = Field(default = "Unknown client")
+    project_name: Optional[str] = Field(default = None)
+    items: List[Item] = Field(default_factory=list)
+    
+    @computed_field
+    def total_netto(self) -> float:
+        total = 0.0
+        for item in self.items:
+            if item.unit_price is not None:
+                subtotal = item.unit_price * item.quantity
+                total += subtotal
+            else:
+                total += 0.0
+        return total
+    
+    @computed_field
+    def total_brutto(self) -> float:
+        total = 0.0
+        for item in self.items:
+            total += item.price_with_vat 
+        return total
 
-def create_pdf_layout(data: QuoteRequest):
+class TextInput(BaseModel):
+    text: str = Field(..., description = "Raw text input")
+
+@app.post("/api/generate-quote")
+async def process_and_generate(data: TextInput):
+    prompt = f"""
+    Extract billing information from the provided text and transform it into a structured JSON object.
+
+    ### RULES:
+    1. Return ONLY raw JSON. No markdown (```), no backticks, no conversational text.
+    2. For each item, look for: name, quantity, unit price, unit type (m2, hrs, pcs, etc.), and VAT rate.
+    3. If unit_price is missing, set it to null.
+    4. If vat_percentage is not explicitly mentioned for an item, use the default value provided below.
+    5. Ensure all numerical values are floats or integers, not strings.
+
+    ### JSON STRUCTURE:
+    {{
+        "client_name": "Full name of the client or company",
+        "project_name": "Title of the quote or project",
+        "items": [
+            {{
+                "name": "Clear description of the service or product",
+                "quantity": 1,
+                "unit_price": 15.5,
+                "type_of_unit": "pcs",
+                "vat_percentage": 20.0
+            }}
+        ]
+    }}
+
+    ### CONTEXT:
+    - Default VAT: 20.0%
+    - Currency: EUR
+
+    Text to process:
+    {data.text}
     """
-    Generates a PDF with a dynamic table of line items and calculates DPH.
-    """
-    pdf = FPDF()
-    pdf.add_page()
-    
-    # Register Roboto fonts (Requires Roboto-Regular.ttf and Roboto-Bold.ttf in root folder)
-    pdf.add_font("Roboto", "", "Roboto-Regular.ttf")
-    pdf.add_font("Roboto", "B", "Roboto-Bold.ttf")
-    
-    # --- HEADER ---
-    pdf.set_font("Roboto", "B", 20)
-    pdf.cell(0, 15, "CENOVÁ PONUKA", ln=True, align='C')
-    pdf.ln(5)
-    
-    # --- CUSTOMER INFO ---
-    pdf.set_font("Roboto", "B", 12)
-    pdf.cell(0, 10, f"Zákazník: {data.customer_name}", ln=True)
-    pdf.ln(5)
-    
-    # --- TABLE HEADER ---
-    pdf.set_font("Roboto", "B", 12)
-    pdf.cell(90, 10, "Popis služby", border=1)
-    pdf.cell(30, 10, "Množstvo", border=1, align='C')
-    pdf.cell(35, 10, "Cena/ks", border=1, align='C')
-    pdf.cell(35, 10, "Spolu", border=1, align='C')
-    pdf.ln(10)
-    
-    # --- TABLE ROWS & MATH ---
-    pdf.set_font("Roboto", "", 12)
-    subtotal = 0.0
-    
-    # Loop through every item the user sent us
-    for item in data.items:
-        # Calculate math for this specific row
-        line_total = item.quantity * item.unit_price
-        subtotal += line_total
-        
-        # Draw the row cells
-        pdf.cell(90, 10, item.description, border=1)
-        pdf.cell(30, 10, str(item.quantity), border=1, align='C')
-        pdf.cell(35, 10, f"{item.unit_price:.2f}", border=1, align='C')
-        pdf.cell(35, 10, f"{line_total:.2f}", border=1, align='C')
-        pdf.ln(10)
-        
-    # --- TOTALS & DPH (VAT) ---
-    pdf.ln(5)
-    tax_rate = 0.20  # 20% DPH
-    tax_amount = subtotal * tax_rate
-    grand_total = subtotal + tax_amount
-    
-    pdf.set_font("Roboto", "B", 12)
-    pdf.cell(0, 8, f"Základ dane: {subtotal:.2f} {data.currency}", ln=True, align='R')
-    pdf.cell(0, 8, f"DPH (20%): {tax_amount:.2f} {data.currency}", ln=True, align='R')
-    
-    pdf.set_font("Roboto", "B", 14)
-    pdf.cell(0, 12, f"Celkom k úhrade: {grand_total:.2f} {data.currency}", ln=True, align='R')
-    
-    # --- SAVE FILE ---
-    file_path = "quote_output.pdf"
-    pdf.output(file_path)
-    return file_path
 
-
-# --- API ENDPOINTS ---
-
-@app.post("/generate-quote")
-def generate_quote(request: QuoteRequest):
-    """
-    Endpoint that accepts JSON payload, triggers the PDF generation, 
-    and returns the physical file to the user.
-    """
-    # 1. Trigger the layout function with the incoming data
-    generated_file = create_pdf_layout(request)
+    try:
+        response = model.generate_content(prompt)
+        raw_json = response.text.replace('```json', '').replace('```', '').strip()
+        ai_data = json.loads(raw_json)
+        quote = QuoteData(**ai_data)
+    except Exception as error:
+        raise HTTPException(status_code = 400, detail = f"Ai returned invalid format {str(error)}")
     
-    # 2. Return the generated file back to the client
-    return FileResponse(
-        path=generated_file, 
-        fshorilename="cenova_ponuka.pdf", 
-        media_type="application/pdf"
-    )
+    missing_prices = []
+    for i in quote.items:
+        if i.unit_price is None:
+            missing_prices.append(i.name)
+
+    if missing_prices:
+        warning_msg = f"Missing prices: {missing_prices}"
+    else:
+        warning_msg = "Data complete."
+
+    return {
+        "status": "success",
+        "warning": warning_msg,
+        "results": {
+            "client": quote.client_name,
+            "project": quote.project_name,
+            "summary": {
+                "total_net": quote.total_netto,
+                "total_brutto": quote.total_brutto,
+                "total_vat": quote.total_brutto - quote.total_netto
+            },
+            "billing_details": quote.model_dump()
+        }
+    }
